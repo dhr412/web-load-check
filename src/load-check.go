@@ -35,9 +35,10 @@ func fetchpag(urlStr string, wg *sync.WaitGroup, mask bool) int {
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			fmt.Printf("Request to %s timed out after %d seconds\n", urlStr, int(timeoutDur))
-			return 404
+			return 503
 		}
 		fmt.Printf("Error fetching URL %s: %v\n", urlStr, err)
+		return 404
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode
