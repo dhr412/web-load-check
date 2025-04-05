@@ -23,7 +23,7 @@ fn main() {
     io::stdout().flush().unwrap();
     let mut input = String::new();
     io::stdin().read_line(&mut input).expect("Failed to read input");
-    let go_args: Vec<&str> = input.trim().split_whitespace().collect();
+    let go_args: Vec<String> = input.trim().split_whitespace().map(String::from).collect();
     let go_program = "./load-checker.exe";
     println!(
         "Starting {} instances with arguments: {:?}",
