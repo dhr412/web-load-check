@@ -8,22 +8,26 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
 var client *http.Client
 var timeoutDur time.Duration = time.Second * 64
+var mu sync.Mutex
+var suc, fail int
 
-func fetchpag(urlStr string, wg *sync.WaitGroup, mask bool) int {
-	defer wg.Done()
+func fetchpag(urlStr string, mask bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutDur)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
 	if err != nil {
 		fmt.Printf("Error creating request for URL %s: %v\n", urlStr, err)
-		return 0
+		updateStats(0)
+		return
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0")
 	if mask {
@@ -35,13 +39,16 @@ func fetchpag(urlStr string, wg *sync.WaitGroup, mask bool) int {
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			fmt.Printf("Request to %s timed out after %d seconds\n", urlStr, int(timeoutDur))
-			return 503
+			updateStats(503)
+			return
 		}
 		fmt.Printf("Error fetching URL %s: %v\n", urlStr, err)
-		return 404
+		updateStats(404)
+		return
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode
+	updateStats(resp.StatusCode)
+	return
 }
 
 func generateIP() string {
@@ -56,7 +63,7 @@ func generateIP() string {
 		firstOctet = randomInt(192, 223)
 	}
 	secondOctet := randomInt(0, 255)
-	thirdOctet := randomInt(0, 255)
+	thirdOctet := randomInt(1, 255)
 	fourthOctet := randomInt(1, 254)
 	return fmt.Sprintf("%d.%d.%d.%d", firstOctet, secondOctet, thirdOctet, fourthOctet)
 }
@@ -67,6 +74,23 @@ func randomInt(min, max int) int {
 		return min
 	}
 	return int(nBig.Int64()) + min
+}
+
+func updateStats(code int) {
+	mu.Lock()
+	defer mu.Unlock()
+	if code >= 200 && code < 300 {
+		suc++
+	} else {
+		fail++
+	}
+}
+
+func printStat() {
+	mu.Lock()
+	defer mu.Unlock()
+	fmt.Printf("Successful requests: %d\nUnsuccessful requests: %d\n", suc, fail)
+	fmt.Printf("Total requests: %d\n", suc+fail)
 }
 
 func main() {
@@ -94,29 +118,24 @@ func main() {
 		fmt.Printf("Using random number of requests: %d\n", numRequests)
 	}
 	mask := *maskPtr
-	var (
-		wg  sync.WaitGroup
-		mu  sync.Mutex
-		res []int
-	)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		printStat()
+		fmt.Println("Requests interrupted")
+		os.Exit(0)
+	}()
+	fmt.Printf("Starting %d requests to %s, use ctrl+c to stop...\n", numRequests, url)
+	var wg sync.WaitGroup
 	for i := 0; i < numRequests; i++ {
 		wg.Add(1)
 		go func() {
-			code := fetchpag(url, &wg, mask)
-			mu.Lock()
-			res = append(res, code)
-			mu.Unlock()
+			defer wg.Done()
+			fetchpag(url, mask)
 		}()
 	}
 	wg.Wait()
-	suc, fail := 0, 0
-	for _, code := range res {
-		if code >= 200 && code < 300 {
-			suc++
-		} else {
-			fail++
-		}
-	}
-	fmt.Printf("Successful requests: %d\nUnsuccessful requests: %d\n", suc, fail)
+	printStat()
 	fmt.Println("Requests completed")
 }
