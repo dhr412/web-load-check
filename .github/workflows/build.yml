@@ -1,0 +1,38 @@
+name: Build binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Release version (e.g., v2.0.0)"
+        required: true
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "stable"
+
+      - name: Build Go file
+        run: go build -o load-checker src/load-check.go
+
+      - name: Build Rust file
+        run: rustc src/helper.rs -o helper-${{ runner.os }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ runner.os }}-${{ github.event.inputs.release_version }}
+          path: |
+            load-checker
+            helper-${{ runner.os }}
