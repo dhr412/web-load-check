@@ -1,6 +1,6 @@
 # Website Load Handling Checker  
 
-This is a simple Go-based tool to test how a website handles multiple concurrent requests. It allows for sending multiple requests to a target URL, optionally masking IP using randomly generated IP addresses  
+This is a simple Go-based tool to test how a website handles multiple concurrent requests. It allows for sending multiple requests to a target URL, optionally masking the host computer  
 
 By default, `load-checker` can efficiently handle up to **100,000 concurrent requests** using Go’s lightweight goroutines. However, due to system resource constraints, a single Go program might hit practical limits around this number. To **bypass this limitation for extremely high loads**, we provide an optional **helper script (`helper.rs`)** written in Rust, which allows spawning multiple independent instances of `load-checker` in parallel  
 
@@ -10,7 +10,7 @@ By default, `load-checker` can efficiently handle up to **100,000 concurrent req
 
 - Sends multiple HTTP GET requests to a specified website  
 - Allows setting a custom number of requests (or defaults to a random value between 20-32)  
-- Supports IP masking via `Forwarded` headers  
+- Supports host masking via headers  
 - Uses goroutines for concurrent requests (scales up to ~100K)  
 - Reports the number of successful and failed requests  
 - Supports launching multiple `load-checker` instances via `helper.rs` (for extreme load testing)  
@@ -92,18 +92,18 @@ Run the executable with the required flags:
 |-------------|---------------------------------------------------|-------------------|
 | `-url`      | Target website URL (required)                     | None              |
 | `-requests` | Number of requests to send                        | 20-32 (random)    |
-| `-mask`     | Enable IP masking (fake `X-Forwarded-For`)        | `true`            |
+| `-mask`     | Enable host masking                               | `true`            |
 | `-help`     | Show help message                                 | `false`           |
 
 #### **Examples**  
 
-Send 50 requests to `https://example.com` without IP masking:  
+Send 50 requests to `https://example.com` without masking:  
 
 ```sh
 ./load-checker -url https://example.com -requests 50 -mask=false  
 ```  
 
-Send requests with default settings (random 20-32 requests, with IP masking):  
+Send requests with default settings (random 20-32 requests, with masking):  
 
 ```sh
 ./load-checker -url https://example.com  
@@ -152,7 +152,7 @@ This will start **5 separate processes**, each executing 500,000 requests in par
 1. Parses command-line arguments  
 2. Validates the target URL and request count  
 3. Uses goroutines to send concurrent HTTP GET requests (up to ~100K)  
-4. If enabled, generates a random IP address for masking  
+4. If enabled, generates a random IP address along with a random user agent for masking  
 5. Collects and prints request success/failure statistics  
 
 ### **Helper Script (`helper.rs`)**

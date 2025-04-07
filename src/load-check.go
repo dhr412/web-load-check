@@ -29,11 +29,21 @@ func fetchpag(urlStr string, mask bool) {
 		updateStats(0)
 		return
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0")
 	if mask {
+		userAgents := []string{
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:137.0) Gecko/20100101 Firefox/137.0",
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/134.0.0.0",
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Brave/128.0.6789.125 Safari/537.36",
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 OPR/112.0.0.0",
+		}
+		randomIndex := randomInt(0, len(userAgents)-1)
 		fIP := generateIP()
 		req.Header.Set("Forwarded", fmt.Sprintf("for=%s; proto=https", fIP))
 		req.Header.Set("X-Forwarded-For", fIP)
+		req.Header.Set("User-Agent", userAgents[randomIndex])
+	} else {
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0")
 	}
 	resp, err := client.Do(req)
 	if err != nil {
