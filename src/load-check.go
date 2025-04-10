@@ -15,10 +15,12 @@ import (
 	"time"
 )
 
-var client *http.Client
-var timeoutDur time.Duration = time.Second * 64
-var mu sync.Mutex
-var suc, fail int
+var (
+	client     *http.Client
+	timeoutDur time.Duration = time.Second * 64
+	reqmu      sync.Mutex
+	suc, fail  int
+)
 
 func fetchpag(urlStr string, mask bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutDur)
@@ -86,9 +88,24 @@ func randomInt(min, max int) int {
 	return int(nBig.Int64()) + min
 }
 
+func randomizedRamp(numRequests int, fn func()) {
+	remaining := numRequests
+	for remaining > 0 {
+		batchSize := randomInt(1, 32)
+		if batchSize > remaining {
+			batchSize = remaining
+		}
+		for i := 0; i < batchSize; i++ {
+			go fn()
+		}
+		remaining -= batchSize
+		time.Sleep(time.Duration(randomInt(128, 640)) * time.Millisecond)
+	}
+}
+
 func updateStats(code int) {
-	mu.Lock()
-	defer mu.Unlock()
+	reqmu.Lock()
+	defer reqmu.Unlock()
 	if code >= 200 && code < 300 {
 		suc++
 	} else {
@@ -97,8 +114,8 @@ func updateStats(code int) {
 }
 
 func printStat() {
-	mu.Lock()
-	defer mu.Unlock()
+	reqmu.Lock()
+	defer reqmu.Unlock()
 	fmt.Printf("Successful requests: %d\nUnsuccessful requests: %d\n", suc, fail)
 	fmt.Printf("Total requests: %d\n", suc+fail)
 }
@@ -106,6 +123,7 @@ func printStat() {
 func main() {
 	urlPtr := flag.String("url", "", "Target URL (required)")
 	requestsPtr := flag.Int("requests", 1, "Number of requests (default: random 20-32)")
+	alivePtr := flag.Bool("keepalive", true, "Keep connections alive (default: true)")
 	maskPtr := flag.Bool("mask", true, "Use IP masking (default: true)")
 	helpPtr := flag.Bool("help", false, "Show help message")
 	flag.Parse()
@@ -114,9 +132,6 @@ func main() {
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n  %s -url https://example.com\n  %s -url https://example.com -requests 50 -mask=false\n", os.Args[0], os.Args[0])
 		os.Exit(0)
-	}
-	client = &http.Client{
-		Timeout: timeoutDur,
 	}
 	url := *urlPtr
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
@@ -128,6 +143,24 @@ func main() {
 		fmt.Printf("Using random number of requests: %d\n", numRequests)
 	}
 	mask := *maskPtr
+	client = &http.Client{
+		Timeout: timeoutDur,
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: func(a, b int) int {
+				if a < b {
+					return b
+				} else {
+					return a
+				}
+			}(numRequests, 8192) * func(b bool) int {
+				if b {
+					return 1
+				}
+				return 0
+			}(*alivePtr),
+			IdleConnTimeout: time.Second * 128,
+		},
+	}
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -138,14 +171,15 @@ func main() {
 	}()
 	fmt.Printf("Starting %d requests to %s, use ctrl+c to stop...\n", numRequests, url)
 	var wg sync.WaitGroup
-	for i := 0; i < numRequests; i++ {
+	randomizedRamp(numRequests, func() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			fetchpag(url, mask)
 		}()
-	}
+	})
 	wg.Wait()
+	fmt.Print("\n")
 	printStat()
 	fmt.Println("Requests completed")
 }
