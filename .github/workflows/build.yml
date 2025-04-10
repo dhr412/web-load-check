@@ -24,15 +24,27 @@ jobs:
           go-version: "stable"
 
       - name: Build Go file
-        run: go build -o load-checker src/load-check.go
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            go build -o load-checker.exe src/load-check.go
+          else
+            go build -o load-checker src/load-check.go
+          fi
+        shell: bash
 
       - name: Build Rust file
-        run: rustc src/helper.rs -o helper-${{ runner.os }}
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            rustc src/helper.rs -o helper-Windows.exe
+          else
+            rustc src/helper.rs -o helper-Linux
+          fi
+        shell: bash
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ runner.os }}-${{ github.event.inputs.release_version }}
           path: |
-            load-checker
-            helper-${{ runner.os }}
+            load-checker*
+            helper-*
