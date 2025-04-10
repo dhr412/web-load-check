@@ -27,17 +27,19 @@ jobs:
         run: |
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             go build -o load-checker.exe src/load-check.go
+            mv load-checker.exe load-checker-win.exe
           else
             go build -o load-checker src/load-check.go
+            mv load-checker load-checker-linux
           fi
         shell: bash
 
       - name: Build Rust file
         run: |
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            rustc src/helper.rs -o helper-Windows.exe
+            rustc src/helper.rs -o helper-win.exe
           else
-            rustc src/helper.rs -o helper-Linux
+            rustc src/helper.rs -o helper-linux
           fi
         shell: bash
 
@@ -46,5 +48,5 @@ jobs:
         with:
           name: binaries-${{ runner.os }}-${{ github.event.inputs.release_version }}
           path: |
-            load-checker*
+            load-checker-*
             helper-*
