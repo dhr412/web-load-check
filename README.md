@@ -4,7 +4,7 @@ This is a simple Go-based tool to test how a website handles multiple concurrent
 
 By default, `load-checker` can efficiently handle up to **100,000 concurrent requests** using Go’s lightweight goroutines. However, due to system resource constraints, a single Go program might hit practical limits around this number. To **bypass this limitation for extremely high loads**, we provide an optional **helper script (`helper.rs`)** written in Rust, which allows spawning multiple independent instances of `load-checker` in parallel  
 
-**If needed for handling more than 100,000 requests at a time, `helper.rs` can be used. Otherwise, it remains completely optional**  
+**If needed for handling more than 100,000 requests at a time, `helper` can be used. Otherwise, it remains completely optional**  
 
 ## Features  
 
@@ -12,8 +12,9 @@ By default, `load-checker` can efficiently handle up to **100,000 concurrent req
 - Allows setting a custom number of requests (or defaults to a random value between 20-32)  
 - Supports host masking via headers  
 - Uses goroutines for concurrent requests (scales up to ~100K)  
-- Reports the number of successful and failed requests  
-- Supports launching multiple `load-checker` instances via `helper.rs` (for extreme load testing)  
+- Reports the number of successful and failed requests
+- Randomized request distribution for more natural traffic patterns  
+- Supports launching multiple `load-checker` instances via `helper` (for extreme load testing)  
 
 ## Installation  
 
@@ -23,7 +24,7 @@ You can download the latest release from the [Releases](https://github.com/dhr41
 1. **Go to the [Releases](https://github.com/dhr412/web-load-check/releases) page**  
 2. **Download the binaries** for your operating system:  
    - **`load-checker`** (`.exe` for Windows or the appropriate file for Linux/macOS)  
-   - **`helper`** (`helper.exe` for Windows or the appropriate file for Linux/macOS, if needed)  
+   - **`helper`** (`.exe` for Windows or the appropriate file for Linux/macOS, if needed)  
 
 3. **Make the files executable:**  
    - **Linux/macOS:**  
@@ -88,12 +89,13 @@ Run the executable with the required flags:
 
 #### **Flags**  
 
-| Flag         | Description                                       | Default           |
-|-------------|---------------------------------------------------|-------------------|
-| `-url`      | Target website URL (required)                     | None              |
-| `-requests` | Number of requests to send                        | 20-32 (random)    |
-| `-mask`     | Enable host masking                               | `true`            |
-| `-help`     | Show help message                                 | `false`           |
+| Flag             | Description                                       | Default           |
+|------------------|---------------------------------------------------|-------------------|
+| `-url`           | Target website URL (required)                     | None              |
+| `-requests`      | Number of requests to send                        | 20-32 (random)    |
+| `-mask`          | Enable host masking                               | `true`            |
+| `-keepalive`     | Use persistent connections                        | `true`            |
+| `-help`          | Show help message                                 | `false`           |
 
 #### **Examples**  
 
@@ -109,11 +111,11 @@ Send requests with default settings (random 20-32 requests, with masking):
 ./load-checker -url https://example.com  
 ```  
 
-### **Running multiple instances with `helper.rs` (for extreme load testing)**  
+### **Running multiple instances with `helper` (for extreme load testing)**  
 
 **Use this only if sending more than ~100,000 requests at a time is needed**  
 
-The `helper.rs` script launches multiple independent instances of `load-checker`, allowing to **scale beyond Go’s goroutine limit (~100k per program)** by running multiple separate processes in parallel  
+The `helper` script launches multiple independent instances of `load-checker`, allowing to **scale beyond Go’s goroutine limit (~100k per program)** by running multiple separate processes in parallel  
 
 #### **Usage:**  
 
@@ -139,12 +141,12 @@ The script will then prompt for arguments for `load-checker`, where you can ente
 
 This will start **5 separate processes**, each executing 500,000 requests in parallel.
 
-### **Use cases of `helper.rs`**  
+### **Use cases of `helper`**  
 
 | Use Case                           | Recommended Approach  |
 |------------------------------------|----------------------|
 | **≤ 100K requests** (single program)  | `load-checker` only |
-| **> 100K requests** (high load testing) | Use `helper.rs` to run multiple instances |
+| **> 100K requests** (high load testing) | Use `helper` to run multiple instances |
 
 ## How It Works  
 
@@ -155,7 +157,7 @@ This will start **5 separate processes**, each executing 500,000 requests in par
 4. If enabled, generates a random IP address along with a random user agent for masking  
 5. Collects and prints request success/failure statistics  
 
-### **Helper Script (`helper.rs`)**
+### **Helper Script (`helper`)**
 1. Takes an optional number of instances as input (default: **8**)  
 2. Prompts for `load-checker` arguments  
 3. Spawns multiple independent instances of `load-checker`  
