@@ -142,6 +142,10 @@ func main() {
 		numRequests = randomInt(20, 32)
 		fmt.Printf("Using random number of requests: %d\n", numRequests)
 	}
+	if numRequests > 100000 {
+		fmt.Printf("Cannot create more than 100000 requests, given %d requests\nCreating 100000 requests\n", numRequests)
+		numRequests = 100000
+	}
 	mask := *maskPtr
 	client = &http.Client{
 		Timeout: timeoutDur,
