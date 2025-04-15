@@ -17,7 +17,7 @@ import (
 
 var (
 	client     *http.Client
-	timeoutDur time.Duration = time.Second * 64
+	timeoutDur time.Duration = 64 * time.Second
 	reqmu      sync.Mutex
 	suc, fail  int
 )
@@ -90,11 +90,18 @@ func randomInt(min, max int) int {
 
 func randomizedRamp(numRequests int, fn func()) {
 	remaining := numRequests
+	divisor := float64(randomInt(1100, 1600)) / 1000.0
+	minBatchBase := int(float64(numRequests) / divisor)
 	for remaining > 0 {
-		batchSize := randomInt(1, 32)
-		if batchSize > remaining {
-			batchSize = remaining
+		randMin := randomInt(6400, 10000)
+		minBatch := randMin
+		if minBatchBase > randMin {
+			minBatch = minBatchBase
 		}
+		if minBatch > remaining {
+			minBatch = remaining
+		}
+		batchSize := randomInt(minBatch, remaining)
 		for i := 0; i < batchSize; i++ {
 			go fn()
 		}
@@ -162,7 +169,7 @@ func main() {
 				}
 				return 0
 			}(*alivePtr),
-			IdleConnTimeout: time.Second * 128,
+			IdleConnTimeout: time.Duration(randomInt(124, 174)) * time.Second,
 		},
 	}
 	sigChan := make(chan os.Signal, 1)
