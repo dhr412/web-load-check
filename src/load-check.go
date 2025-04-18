@@ -131,13 +131,14 @@ func main() {
 	urlPtr := flag.String("url", "", "Target URL (required)")
 	requestsPtr := flag.Int("requests", 1, "Number of requests (default: random 20-32)")
 	alivePtr := flag.Bool("keepalive", true, "Keep connections alive (default: true)")
+	rampPtr := flag.Bool("ranramp", false, "Enable randomized request ramp-up")
 	maskPtr := flag.Bool("mask", true, "Use IP masking (default: true)")
 	helpPtr := flag.Bool("help", false, "Show help message")
 	flag.Parse()
 	if *helpPtr || *urlPtr == "" {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n\nFlags:\n", os.Args[0])
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nExamples:\n  %s -url https://example.com\n  %s -url https://example.com -requests 50 -mask=false\n", os.Args[0], os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nExamples:\n  %s -url https://example.com -ranramp\n  %s -url https://example.com -requests 50 -mask=false\n", os.Args[0], os.Args[0])
 		os.Exit(0)
 	}
 	url := *urlPtr
@@ -182,13 +183,23 @@ func main() {
 	}()
 	fmt.Printf("Starting %d requests to %s, use ctrl+c to stop...\n", numRequests, url)
 	var wg sync.WaitGroup
-	randomizedRamp(numRequests, func() {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			fetchpag(url, mask)
-		}()
-	})
+	if *rampPtr {
+		randomizedRamp(numRequests, func() {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				fetchpag(url, mask)
+			}()
+		})
+	} else {
+		for i := 0; i < numRequests; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				fetchpag(url, mask)
+			}()
+		}
+	}
 	wg.Wait()
 	fmt.Print("\n")
 	printStat()
