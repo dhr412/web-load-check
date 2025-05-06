@@ -131,7 +131,7 @@ func main() {
 	urlPtr := flag.String("url", "", "Target URL (required)")
 	requestsPtr := flag.Int("requests", 1, "Number of requests (default: random 20-32)")
 	alivePtr := flag.Bool("keepalive", true, "Keep connections alive (default: true)")
-	rampPtr := flag.Bool("ranramp", false, "Enable randomized request ramp-up")
+	rampPtr := flag.Bool("ranramp", false, "Enable randomized request ramp-up (default: false)")
 	maskPtr := flag.Bool("mask", true, "Use IP masking (default: true)")
 	helpPtr := flag.Bool("help", false, "Show help message")
 	flag.Parse()
