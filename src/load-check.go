@@ -179,19 +179,8 @@ func main() {
 	client = &http.Client{
 		// Timeout: timeoutDur,
 		Transport: &http.Transport{
-			MaxIdleConnsPerHost: func(a, b int) int {
-				if a < b {
-					return b
-				} else {
-					return a
-				}
-			}(numRequests, 8192) * func(b bool) int {
-				if b {
-					return 1
-				}
-				return 0
-			}(*alivePtr),
-			IdleConnTimeout: time.Duration(randomInt(124, 174)) * time.Second,
+			MaxIdleConnsPerHost: 0,
+			IdleConnTimeout:     time.Duration(randomInt(124, 174)) * time.Second,
 		},
 	}
 	sigChan := make(chan os.Signal, 1)
