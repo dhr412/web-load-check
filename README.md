@@ -11,7 +11,6 @@ By default, `load-checker` can efficiently handle up to **100,000 concurrent req
 - Sends multiple HTTP GET requests to a specified website  
 - Allows setting a custom number of requests (or defaults to a random value between 20-32)  
 - Supports host masking via headers  
-- Supports keep-alive connections  
 - Optional randomized request ramp-up (to mimic a more natural traffic pattern)  
 - Uses goroutines for concurrency (scales up to ~100K)  
 - Reports the number of successful and failed requests  
@@ -87,7 +86,6 @@ rustc helper.rs -o helper
 | `-url`       | Target website URL (required)                  | None               |
 | `-requests`  | Number of requests to send                     | Random 20–32       |
 | `-mask`      | Enable IP masking and user-agent rotation      | `true`             |
-| `-keepalive` | Use persistent connections                     | `true`             |
 | `-ranramp`   | Enable randomized ramp-up traffic pattern      | `false`            |
 | `-help`      | Show help message                              | `false`            |
 
