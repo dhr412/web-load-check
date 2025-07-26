@@ -23,30 +23,43 @@ jobs:
         with:
           go-version: "stable"
 
-      - name: Build Go file
+      - name: Build Go binary
         run: |
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            go build -o load-checker.exe src/load-check.go
-            mv load-checker.exe load-checker-win.exe
+            go build -o load-checker.exe ./src/load-check.go
+            mv load-checker.exe load-checker-windows.exe
           else
-            go build -o load-checker src/load-check.go
+            go build -o load-checker ./src/load-check.go
             mv load-checker load-checker-linux
           fi
         shell: bash
 
-      - name: Build Rust file
-        run: |
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            rustc src/helper.rs -o helper-win.exe
-          else
-            rustc src/helper.rs -o helper-linux
-          fi
-        shell: bash
-
-      - name: Upload artifacts
+      - name: Upload OS-specific binary
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ runner.os }}-${{ github.event.inputs.release_version }}
+          name: binary-${{ runner.os }}
           path: |
             load-checker-*
-            helper-*
+
+  merge-artifacts:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-Windows
+          path: combined-binaries
+
+      - name: Download Linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-Linux
+          path: combined-binaries
+
+      - name: Upload combined artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ github.event.inputs.release_version }}
+          path: combined-binaries
