@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -18,8 +19,7 @@ import (
 var (
 	client     *http.Client
 	timeoutDur time.Duration
-	reqmu      sync.Mutex
-	suc, fail  int
+	suc, fail  int32
 )
 
 func fetchpag(urlStr string, mask bool) {
@@ -67,17 +67,34 @@ func fetchpag(urlStr string, mask bool) {
 	} else {
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0")
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+
+	var resp *http.Response
+	maxRetries := 8
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		resp, err = client.Do(req)
+		if err == nil {
+			break
+		}
+
+		if ctx.Err() != nil {
 			fmt.Printf("Request to %s timed out after %d seconds\n", urlStr, int(timeoutDur))
 			updateStats(503)
 			return
 		}
-		fmt.Printf("Error fetching URL %s: %v\n", urlStr, err)
+
+		if attempt < maxRetries {
+			backoff := time.Duration(randomInt(320, 640)) * time.Millisecond
+			time.Sleep(backoff)
+		}
+	}
+
+	if err != nil {
+		fmt.Printf("Error fetching URL %s after %d attempts: %v\n", urlStr, maxRetries, err)
 		updateStats(404)
 		return
 	}
+
 	defer resp.Body.Close()
 	updateStats(resp.StatusCode)
 	return
@@ -131,26 +148,23 @@ func randomizedRamp(numRequests int, fn func()) {
 }
 
 func updateStats(code int) {
-	reqmu.Lock()
-	defer reqmu.Unlock()
 	if code >= 200 && code < 300 {
-		suc++
+		atomic.AddInt32(&suc, 1)
 	} else {
-		fail++
+		atomic.AddInt32(&fail, 1)
 	}
 }
 
 func printStat() {
-	reqmu.Lock()
-	defer reqmu.Unlock()
-	fmt.Printf("Successful requests: %d\nUnsuccessful requests: %d\n", suc, fail)
-	fmt.Printf("Total requests: %d\n", suc+fail)
+	succ := atomic.LoadInt32(&suc)
+	failc := atomic.LoadInt32(&fail)
+	fmt.Printf("Successful requests: %d\nUnsuccessful requests: %d\n", succ, failc)
+	fmt.Printf("Total requests: %d\n", succ+failc)
 }
 
 func main() {
 	urlPtr := flag.String("url", "", "Target URL (required)")
 	requestsPtr := flag.Int("requests", 1, "Number of requests (default: random 20-32)")
-	// alivePtr := flag.Bool("keepalive", true, "Keep connections alive (default: true)")
 	rampPtr := flag.Bool("ranramp", false, "Enable randomized request ramp-up (default: false)")
 	maskPtr := flag.Bool("mask", true, "Use IP masking (default: true)")
 	helpPtr := flag.Bool("help", false, "Show help message")
@@ -175,12 +189,12 @@ func main() {
 		numRequests = 100000
 	}
 	mask := *maskPtr
-	timeoutDur = time.Duration(randomInt(32, 64)) * time.Second
 	client = &http.Client{
-		// Timeout: timeoutDur,
 		Transport: &http.Transport{
+			DisableKeepAlives:   true,
+			MaxIdleConns:        0,
 			MaxIdleConnsPerHost: 0,
-			IdleConnTimeout:     time.Duration(randomInt(124, 174)) * time.Second,
+			IdleConnTimeout:     0,
 		},
 	}
 	sigChan := make(chan os.Signal, 1)
