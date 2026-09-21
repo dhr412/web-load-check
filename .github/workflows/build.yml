@@ -1,4 +1,4 @@
-name: Build binaries
+name: Build binary
 
 on:
   workflow_dispatch:
@@ -9,10 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -21,25 +18,67 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: "stable"
+          go-version: "1.26.8"
 
-      - name: Build Go binary
+      - name: Install dependencies
         run: |
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            go build -o load-checker.exe ./src/load-check.go
-            mv load-checker.exe load-checker-windows.exe
-          else
-            go build -o load-checker ./src/load-check.go
-            mv load-checker load-checker-linux
-          fi
+          go mod tidy
+          go mod download
+
+      - name: Build binaries (amd64 + arm64)
+        run: |
+          set -e
+          mkdir -p dist/linux dist/windows dist/android dist/darwin
+
+          TARGETS=(
+          "linux amd64"
+          "linux arm64"
+          "windows amd64"
+          "windows arm64"
+          "android arm64"
+          "darwin arm64"
+          )
+
+          for t in "${TARGETS[@]}"; do
+          read -r GOOS GOARCH <<< "$t"
+          echo "Building for $GOOS/$GOARCH"
+          ext=""
+          outdir="dist/$GOOS"
+          mkdir -p "$outdir"
+          if [[ "$GOOS" == "windows" ]]; then ext=".exe"; fi
+
+          CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
+            go build -ldflags="-s -w" -o "$outdir/wlc-${GOOS}-${GOARCH}${ext}" ./src/
+          done
         shell: bash
 
-      - name: Upload OS-specific binary
+      - name: Show built files
+        run: ls -R dist
+        shell: bash
+
+      - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binary-${{ runner.os }}
-          path: |
-            load-checker-*
+          name: binary-Windows
+          path: dist/windows/*
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-Linux
+          path: dist/linux/*
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-Android
+          path: dist/android/*
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-macOS
+          path: dist/darwin/*
 
   merge-artifacts:
     needs: build
@@ -57,6 +96,22 @@ jobs:
         with:
           name: binary-Linux
           path: combined-binaries
+
+      - name: Download Android binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-Android
+          path: combined-binaries
+
+      - name: Download macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-macOS
+          path: combined-binaries
+
+      - name: List combined contents
+        run: ls -R combined-binaries
+        shell: bash
 
       - name: Upload combined artifact
         uses: actions/upload-artifact@v4
