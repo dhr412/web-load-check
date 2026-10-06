@@ -2,32 +2,30 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	_ "embed"
 	"flag"
 	"fmt"
-	"math/big"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 var (
 	client     *http.Client
 	timeoutDur time.Duration
-	reqMut     sync.Mutex
-	suc, fail  int
+	suc, fail  atomic.Int64
 )
 
 func randomInt(min, max int) int {
-	nBig, err := rand.Int(rand.Reader, big.NewInt(int64(max-min+1)))
-	if err != nil {
+	if max < min {
 		return min
 	}
-	return int(nBig.Int64()) + min
+	return rand.IntN(max-min+1) + min
 }
 
 func generateIP() string {
@@ -99,7 +97,7 @@ func fetchUrl(url string, mask bool) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			fmt.Printf("Request to %s timed out after %d seconds\n", url, int(timeoutDur))
+			fmt.Printf("Request to %s timed out after %d seconds\n", url, int(timeoutDur.Seconds()))
 			updateStats(503)
 			return
 		}
@@ -113,7 +111,7 @@ func fetchUrl(url string, mask bool) {
 	return
 }
 
-func randomizedRamp(numRequests int, fn func()) {
+func randomizedRamp(numRequests int, sem chan struct{}, wg *sync.WaitGroup, url string, mask bool) {
 	remReqs := numRequests
 	divisor := float64(randomInt(1100, 1600)) / 1000.0
 	minBatchBase := int(float64(numRequests) / divisor)
@@ -130,7 +128,11 @@ func randomizedRamp(numRequests int, fn func()) {
 
 		batchSize := randomInt(minBatch, remReqs)
 		for i := 0; i < batchSize; i++ {
-			go fn()
+			sem <- struct{}{}
+			wg.Go(func() {
+				defer func() { <-sem }()
+				fetchUrl(url, mask)
+			})
 		}
 		remReqs -= batchSize
 
@@ -139,22 +141,18 @@ func randomizedRamp(numRequests int, fn func()) {
 }
 
 func updateStats(statCode int) {
-	reqMut.Lock()
-	defer reqMut.Unlock()
-
 	if statCode >= 200 && statCode < 300 {
-		suc++
+		suc.Add(1)
 	} else {
-		fail++
+		fail.Add(1)
 	}
 }
 
 func printStat() {
-	reqMut.Lock()
-	defer reqMut.Unlock()
-
-	fmt.Printf("Successful requests: %d\nUnsuccessful requests: %d\n", suc, fail)
-	fmt.Printf("Total requests: %d\n", suc+fail)
+	s := suc.Load()
+	f := fail.Load()
+	fmt.Printf("\nSuccessful requests: %d\nUnsuccessful requests: %d\n", s, f)
+	fmt.Printf("Total requests: %d\n", s+f)
 }
 
 func main() {
@@ -163,6 +161,9 @@ func main() {
 
 	requestsPtr := flag.Int("requests", 1, "Number of requests (default: random 20-32)")
 	flag.IntVar(requestsPtr, "r", 1, "shorthand for -requests")
+
+	concrtPtr := flag.Int("concurrency", 512, "Maximum number of concurrent requests (default: 512)")
+	flag.IntVar(concrtPtr, "c", 512, "shorthand for -concurrency")
 
 	rampPtr := flag.Bool("ranramp", false, "Enable randomized request ramp-up (default: false)")
 	maskPtr := flag.Bool("mask", true, "Use IP masking (default: true)")
@@ -215,6 +216,12 @@ func main() {
 		numRequests = 1000000
 	}
 
+	maxConcurrent := *concrtPtr
+	if maxConcurrent > 10000 {
+		fmt.Fprintf(os.Stderr, "Warning: Capping concurrency at 10000 (requested %d)\n", maxConcurrent)
+		maxConcurrent = 10000
+	}
+
 	timeoutDur = time.Duration(randomInt(32, 64)) * time.Second
 
 	client = &http.Client{
@@ -237,18 +244,18 @@ func main() {
 		os.Exit(0)
 	}()
 
-	fmt.Printf("Starting %d requests to %s, use ctrl+c to stop...\n", numRequests, url)
+	sem := make(chan struct{}, maxConcurrent)
 	var wg sync.WaitGroup
 
+	fmt.Printf("Starting %d requests to %s (Max concurrent: %d), use ctrl+c to stop...\n", numRequests, url, maxConcurrent)
+
 	if *rampPtr {
-		randomizedRamp(numRequests, func() {
-			wg.Go(func() {
-				fetchUrl(url, *maskPtr)
-			})
-		})
+		randomizedRamp(numRequests, sem, &wg, url, *maskPtr)
 	} else {
 		for i := 0; i < numRequests; i++ {
+			sem <- struct{}{}
 			wg.Go(func() {
+				defer func() { <-sem }()
 				fetchUrl(url, *maskPtr)
 			})
 		}
