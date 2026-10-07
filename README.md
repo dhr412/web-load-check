@@ -65,13 +65,16 @@ go build -o wlc
 
 #### Flags
 
-| Flag               | Description                                    | Default            |
-|--------------      |------------------------------------------------|--------------------|
-| `-url`/`-u`        | Target website URL (required)                  | None               |
-| `-requests`/`-r`   | Number of requests to send                     | Random 20–32       |
-| `-mask`            | Enable IP masking and user-agent rotation      | `true`             |
-| `-ranramp`         | Enable randomized ramp-up traffic pattern      | `false`            |
-| `-help`            | Show help message                              | N/A                |
+| Flag                  | Description                                         | Default      |
+|-----------------------|-----------------------------------------------------|--------------|
+| `-url`/`-u`           | Target website URL (required)                       | None         |
+| `-requests`/`-r`      | Number of requests to send                          | Random 20–32 |
+| `-concurrency`/`-c`   | Maximum number of concurrent requests               | `512`        |
+| `-mask`               | Enable IP masking and user-agent rotation           | `true`       |
+| `-ranramp`            | Enable randomized ramp-up traffic pattern           | `false`      |
+| `-runs`               | Number of times to repeat the load test             | `1`          |
+| `-run-sleep`          | Sleep duration between runs (e.g. `10s`, `1m`)      | `10s`        |
+| `-help`               | Show help message                                   | N/A          |
 
 ---
 
@@ -95,17 +98,31 @@ Use randomized ramp-up pattern:
 ./wlc -url https://example.com -requests 5000 -ranramp
 ```
 
+Limit concurrency to 100 simultaneous requests:
+
+```sh
+./wlc -url https://example.com -requests 10000 -concurrency 100
+```
+
+Run 3 back-to-back load tests with a 30-second pause between each:
+
+```sh
+./wlc -url https://example.com -requests 5000 -runs 3 -run-sleep 30s
+```
+
 ---
 
 ## How It Works
 
 1. Parses CLI arguments and validates inputs using Go's native `flag` package
 2. Parses the embedded `user_agents.txt` file into memory at startup
-3. Generates randomized or uniform traffic using goroutines
-4. Applies IP masking (`X-Forwarded-For`) and randomized headers if enabled
+3. Generates randomized or uniform traffic using goroutines, throttled by a configurable concurrency semaphore (`-concurrency`)
+4. Applies IP masking (`X-Forwarded-For` and `Forwarded` headers) and randomized user-agents if enabled
 5. Maximizes Server Load: Explicitly disables HTTP Keep-Alives and HTTP/2 multiplexing. This forces the target server to perform a full TCP (and TLS) handshake and teardown for every single request, exhausting connection tables.
 6. Supports ramped-up requests using randomized burst batches
-7. Tracks and prints request statistics (successful vs unsuccessful)
+7. Supports multiple sequential runs (`-runs`) with a configurable sleep period between them (`-run-sleep`)
+8. Tracks and prints per-run request statistics (successful vs unsuccessful), resetting counters between runs
+9. Handles `Ctrl+C` gracefully — prints current stats and exits cleanly
 
 
 ## License

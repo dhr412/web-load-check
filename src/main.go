@@ -168,6 +168,9 @@ func main() {
 	rampPtr := flag.Bool("ranramp", false, "Enable randomized request ramp-up (default: false)")
 	maskPtr := flag.Bool("mask", true, "Use IP masking (default: true)")
 
+	runsPtr := flag.Int("runs", 1, "Number of runs to execute (default: 1)")
+	runSleepPtr := flag.Duration("run-sleep", 10*time.Second, "Sleep duration between runs (default: 10s)")
+
 	printUsage := func(printReceivedArgs bool) {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n\nFlags:\n", os.Args[0])
 		flag.PrintDefaults()
@@ -247,22 +250,36 @@ func main() {
 	sem := make(chan struct{}, maxConcurrent)
 	var wg sync.WaitGroup
 
-	fmt.Printf("Starting %d requests to %s (Max concurrent: %d), use ctrl+c to stop...\n", numRequests, url, maxConcurrent)
+	for runNum := 1; runNum <= *runsPtr; runNum++ {
+		if *runsPtr > 1 {
+			fmt.Printf("\n--- Run %d/%d ---\n", runNum, *runsPtr)
+		}
 
-	if *rampPtr {
-		randomizedRamp(numRequests, sem, &wg, url, *maskPtr)
-	} else {
-		for i := 0; i < numRequests; i++ {
-			sem <- struct{}{}
-			wg.Go(func() {
-				defer func() { <-sem }()
-				fetchUrl(url, *maskPtr)
-			})
+		suc.Store(0)
+		fail.Store(0)
+
+		fmt.Printf("Starting %d requests to %s (Max concurrent: %d), use ctrl+c to stop...\n", numRequests, url, maxConcurrent)
+
+		if *rampPtr {
+			randomizedRamp(numRequests, sem, &wg, url, *maskPtr)
+		} else {
+			for i := 0; i < numRequests; i++ {
+				sem <- struct{}{}
+				wg.Go(func() {
+					defer func() { <-sem }()
+					fetchUrl(url, *maskPtr)
+				})
+			}
+		}
+
+		wg.Wait()
+		fmt.Print("\n")
+		printStat()
+
+		if runNum < *runsPtr {
+			fmt.Printf("Sleeping for %v before next run...\n", *runSleepPtr)
+			time.Sleep(*runSleepPtr)
 		}
 	}
-
-	wg.Wait()
-	fmt.Print("\n")
-	printStat()
-	fmt.Println("Requests completed")
+	fmt.Println("\nAll runs completed")
 }
